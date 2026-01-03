@@ -11,14 +11,39 @@ Pull Request を作成してください
 - Commit作成
     - 複数回に分けてもいいです
 - `origin/<新規ブランチ>` に push
+- **【重要】Pull Request作成先のデフォルトリポジトリ設定**
+    - 以下のコマンドを実行し、必要なリポジトリ情報をシェル変数に格納します。
+        ```bash
+        UPSTREAM_REMOTE_URL=$(git remote -v | grep '^upstream' | awk '{print $2}' | head -n 1)
+        UPSTREAM_OWNER_REPO=$(echo "$UPSTREAM_REMOTE_URL" | sed -E 's/.*[:/]([^/]+\/[^/]+)\.git/\1/')
+        FORK_REMOTE_URL=$(git remote -v | grep '^origin' | awk '{print $2}' | head -n 1)
+        FORK_OWNER=$(echo "$FORK_REMOTE_URL" | sed -E 's/.*[:/]([^/]+)\/[^/]+\.git/\1/')
+        CURRENT_BRANCH=$(git branch --show-current)
+        ```
+    - **`gh repo set-default ${UPSTREAM_OWNER_REPO}`** コマンドで、Pull Requestを作成するターゲットリポジトリを明示的に設定します。
+        ```bash
+        gh repo set-default ${UPSTREAM_OWNER_REPO}
+        ```
+    - **設定の確認**: 以下のコマンドを実行し、現在のデフォルトリポジトリが`upstream`リポジトリであることを確認します。
+        ```bash
+        echo "現在のデフォルトリポジリ: $(gh repo view --json name,owner --jq '.owner.login + "/" + .name')"
+        echo "ベースブランチ: $(gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name')"
+        ```
+        確認後、表示されたリポジトリ名が`upstream`リポジリ（例: `hagevvashi-info/hagevvashi.info-dev-hub`）と一致し、ベースブランチが`main`であることを確認してください。
 - gh コマンドで Pull Request 作成
     - Pull Request 作成時の base と head は下記です
-        - base: `upstream/main`
-        - head: `origin/<新規ブランチ>`
-    - **注意**: forkされたリポジトリからupstreamへPRを作成する場合
-        - `gh pr create --title "タイトル" --body "本文" --base main --head <fork-owner>:<branch-name>`
-        - 例: `gh pr create --title "docs: clarify assistant modes" --base main --head hagevvashi:docs/clarify-assistant-modes`
-        - 事前に `gh repo set-default <upstream-repo>` でデフォルトリポジトリを設定
+        - base: `main` (※ 事前に設定したデフォルトリポジトリのmainブランチを指します)
+        - head: `${FORK_OWNER}:${CURRENT_BRANCH}` (※ あなたのフォークリポジトリのブランチを指定)
+    - 以下のコマンドでPull Requestを作成します。**実行前に、必ず表示される情報を確認してください。**
+        ```bash
+        gh pr create \
+          --title "fix: ..." \
+          --body "..." \
+          --base main \
+          --head ${FORK_OWNER}:${CURRENT_BRANCH} \
+          --fill # または `--body "Why: ..."` で本文を記述
+        ```
+    - **再度注意**: `gh pr create`実行前に、必ず表示されるタイトル、本文、`base`、`head`が意図通りであることを確認してください。
 
 ## Pull Request のタイトルと本文のルール
 
