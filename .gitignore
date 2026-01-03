@@ -15,6 +15,7 @@ devcontainer.json
 # Cursor files
 .cursor/projects
 .cursor/ide_state.json
+.claude/settings.local.json
 
 # Product repositories (managed via Docker Volume)
 repos/

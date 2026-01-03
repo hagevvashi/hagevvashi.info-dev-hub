@@ -29,7 +29,7 @@ services:
     stdin_open: true
 
     tmpfs:
-      - /run
+      - /run:exec
       - /run/lock
       - /tmp
 
