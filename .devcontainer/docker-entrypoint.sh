@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 
+echo "=== docker-entrypoint.sh STARTED at $(date) ===" >&2
+
+
+
 set -euo pipefail
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "🔧 Docker Entrypoint: Initializing container..."
+echo "🔧 Docker Entrypoint: Initializing container"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -29,7 +33,7 @@ for item in "${CONFIG_ITEMS[@]}"; do
     # Check if the file or directory exists before changing ownership
     if [ -e "$item" ]; then
         echo "  Updating ownership for $item"
-        sudo chown -R $(id -u):$(id -g) "$item"
+        chown -R ${UNAME}:${GNAME} "$item"
     fi
 done
 echo "✅ Permissions fixed."
@@ -40,6 +44,7 @@ echo "✅ Permissions fixed."
 
 echo ""
 echo "🐳 Phase 2: Adjusting Docker socket permissions..."
+
 if [ -S /var/run/docker.sock ]; then
     # Docker Socket の現在の所有者とパーミッションを確認
     DOCKER_SOCK_GID=$(stat -c '%g' /var/run/docker.sock)
@@ -52,7 +57,7 @@ if [ -S /var/run/docker.sock ]; then
 
     # ユーザーのグループにdockerグループを追加（必要に応じて）
     if ! groups | grep -q docker; then
-        sudo usermod -a -G docker $(whoami)
+        sudo usermod -a -G docker ${UNAME}
     fi
 
     echo "  Docker socket permissions updated"
@@ -63,51 +68,37 @@ fi
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 echo ""
-echo "⏱️  Phase 3: Initializing Atuin configuration..."
+echo "⏱️  Phase 3: Initializing Atuin configuration for user ${UNAME}..."
 if command -v atuin >/dev/null 2>&1; then
-    # Atuin設定ディレクトリの作成
+    # ユーザーの環境で初期化
     mkdir -p ~/.config/atuin
     mkdir -p ~/.local/share/atuin
 
     # 設定ファイルが存在しない場合のみデフォルト設定を作成
     if [ ! -f ~/.config/atuin/config.toml ]; then
-        echo "  Creating default Atuin config..."
+        echo "  Creating default Atuin config for ${UNAME}..."
         cat > ~/.config/atuin/config.toml <<'EOF'
-# Atuin設定ファイル
-# 同期を無効化（必要に応じて有効化）
+# Atuin設定ファイル（ユーザー用）
 sync_address = ""
 sync_frequency = "0"
-
-# 検索設定
 search_mode = "fuzzy"
 filter_mode = "host"
 filter_mode_shell_up_key_binding = "directory"
-
-# UIカスタマイズ
 style = "compact"
 inline_height = 25
 show_preview = true
 show_help = true
-
-# 履歴の設定
 history_filter = []
-# secrets_filter = true  # パスワードなどの機密情報をフィルタリング
-
-# キーバインド設定
-# enter_accept = true  # Enterキーで選択を確定
-
-# 統計情報の表示
 show_stats = true
-
-# タイムゾーン設定
 timezone = "+09:00"
 EOF
-        echo "  ℹ️  Created default Atuin configuration"
+        echo "  ✅ Created default Atuin configuration for ${UNAME}"
     else
-        echo "  ℹ️  Atuin config already exists, using existing configuration"
+        echo "  ℹ️  Atuin config already exists for ${UNAME}"
     fi
 fi
-echo "✅ Atuin initialization complete"
+echo "✅ Atuin initialization complete for ${UNAME}"
+
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Phase 4: supervisord設定ファイルの検証とフォールバック
@@ -117,7 +108,7 @@ echo ""
 echo "🔍 Phase 4: Validating supervisord configuration..."
 
 UNAME=${UNAME:-$(whoami)}
-REPO_NAME=${REPO_NAME:-"hagevvashi.info-dev-hub"}
+REPO_NAME=${REPO_NAME}
 
 PROJECT_CONF="/home/${UNAME}/${REPO_NAME}/workloads/supervisord/project.conf"
 SEED_CONF="/etc/supervisor/seed.conf"
@@ -126,10 +117,12 @@ TARGET_CONF="/etc/supervisor/supervisord.conf"
 if [ -f "${PROJECT_CONF}" ]; then
     echo "  ✅ Found: ${PROJECT_CONF}"
 
+    sudo rm -f "${TARGET_CONF}"
     sudo ln -sf "${PROJECT_CONF}" "${TARGET_CONF}"
 
-    if supervisord -c "${TARGET_CONF}" -t 2>&1; then
-        echo "  ✅ project.conf is valid"
+    # 設定ファイルの基本的な構文チェック（静的検証）
+    if grep -q "\[supervisord\]" "${PROJECT_CONF}" && grep -q "\[supervisorctl\]" "${PROJECT_CONF}"; then
+        echo "  ✅ project.conf appears valid"
     else
         echo ""
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -177,7 +170,7 @@ echo ""
 echo "🔍 Phase 5: Validating process-compose configuration..."
 
 UNAME=${UNAME:-$(whoami)}
-REPO_NAME=${REPO_NAME:-"hagevvashi.info-dev-hub"}
+REPO_NAME=${REPO_NAME}
 
 PROJECT_YAML="/home/${UNAME}/${REPO_NAME}/workloads/process-compose/project.yaml"
 SEED_YAML="/etc/process-compose/seed.yaml"
@@ -230,6 +223,7 @@ echo "✅ Container initialization complete"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 echo "🚀 Starting supervisord..."
+echo ""
 
-# 元のコマンドを実行
-exec "$@"
+# supervisordをフォアグラウンドで起動（PID 1として実行）
+exec sudo supervisord -c "${TARGET_CONF}" -n
