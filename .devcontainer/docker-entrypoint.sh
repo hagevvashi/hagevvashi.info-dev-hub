@@ -6,6 +6,16 @@ echo "=== docker-entrypoint.sh STARTED at $(date) ===" >&2
 
 set -euo pipefail
 
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Phase 0: 環境変数の読み込み
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# s6-overlay が配置した環境変数を読み込む
+if [ -d /run/s6/container_environment ]; then
+    for file in /run/s6/container_environment/*; do
+        [ -f "$file" ] && export "$(basename "$file")=$(cat "$file")"
+    done
+fi
+
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "🔧 Docker Entrypoint: Initializing container"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -64,40 +74,17 @@ if [ -S /var/run/docker.sock ]; then
 fi
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Phase 3: Atuin初期化
+# Phase 3: Atuin初期化（削除）
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-echo ""
-echo "⏱️  Phase 3: Initializing Atuin configuration for user ${UNAME}..."
-if command -v atuin >/dev/null 2>&1; then
-    # ユーザーの環境で初期化
-    mkdir -p ~/.config/atuin
-    mkdir -p ~/.local/share/atuin
-
-    # 設定ファイルが存在しない場合のみデフォルト設定を作成
-    if [ ! -f ~/.config/atuin/config.toml ]; then
-        echo "  Creating default Atuin config for ${UNAME}..."
-        cat > ~/.config/atuin/config.toml <<'EOF'
-# Atuin設定ファイル（ユーザー用）
-sync_address = ""
-sync_frequency = "0"
-search_mode = "fuzzy"
-filter_mode = "host"
-filter_mode_shell_up_key_binding = "directory"
-style = "compact"
-inline_height = 25
-show_preview = true
-show_help = true
-history_filter = []
-show_stats = true
-timezone = "+09:00"
-EOF
-        echo "  ✅ Created default Atuin configuration for ${UNAME}"
-    else
-        echo "  ℹ️  Atuin config already exists for ${UNAME}"
-    fi
-fi
-echo "✅ Atuin initialization complete for ${UNAME}"
+# 注記: Atuin 初期化は .bashrc_custom の初回ログイン時に実行されます
+# 理由: docker-entrypoint は root で実行されるため、ユーザーコンテキストでの
+#       初期化は .bashrc で行う方が適切です
+# 参照: 25_6_22_docker_entrypoint_user_context_issue.md
+#
+# 重要な制約:
+#   docker-entrypoint には root 権限が必要な操作のみを記述すること
+#   一般ユーザーコンテキストが必要な操作を記述すると、
+#   s6-overlay の環境変数展開問題により失敗します
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -222,8 +209,8 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "✅ Container initialization complete"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-echo "🚀 Starting supervisord..."
+echo "✅ docker-entrypoint.sh finished."
+echo "   s6-overlay will now start supervisord and process-compose as longrun services."
 echo ""
 
-# supervisordをフォアグラウンドで起動（PID 1として実行）
-exec sudo supervisord -c "${TARGET_CONF}" -n
+# Phase 6削除: s6-overlayがsupervisordとprocess-composeを起動する

@@ -1,2 +1,7 @@
-#!/command/execlineb -P
-/usr/local/bin/docker-entrypoint.sh
+#!/usr/bin/env bash
+# root ユーザーで実行
+# Phase 1-2, 4-5 は root 権限が必要
+# Phase 3（Atuin 初期化）は .bashrc_custom で実行
+# 重要: 一般ユーザーコンテキストが必要な処理をここに記述してはいけない
+#       docker-entrypoint には root 権限操作のみを記述すること
+exec /usr/local/bin/docker-entrypoint.sh
